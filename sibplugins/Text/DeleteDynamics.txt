@@ -1,0 +1,25 @@
+//Deletes all dynamics text from score i.e. f, mf, p, pp, etc and hairpins.
+//This allows audio to be created for "note-bashing" practice tracks. When one
+//is learning a part, the subtleties such as dynamics in playback are annoying.
+
+num = 0;
+sa = CreateSparseArray();
+for each Staff s in Sibelius.ActiveScore {
+  if (not s.IsSystemStaff) {
+    for each Bar b in s {
+      for each o in b {
+        if (o.Type = "CrescendoLine"
+           or o.Type = "DiminuendoLine"
+           or o.Type = "Text") {
+          //trace("push");
+          //trace("ID " & o.StyleId);
+          sa.Push(o);
+        }
+      }
+    }
+  }
+}
+//trace("search finished");
+for i = 0 to sa.Length {
+  sa[i].Delete();
+}

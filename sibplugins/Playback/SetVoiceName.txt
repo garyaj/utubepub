@@ -1,0 +1,28 @@
+
+{
+	Initialize "(){ AddToPluginsMenu('SetVoiceName','Run'); }"
+	Run "() {
+//Renames multiple occurrences of a voice name to 'voice1', 'voice2' etc.
+//Only renames SATB voices i.e. ignores instruments.
+ninst = CreateDictionary('S', 0, 'A', 0, 'T', 0, 'B', 0);
+newname = CreateSparseArray();
+for each Staff s in Sibelius.ActiveScore { 
+  char1 = utils.UpperCase(CharAt(s.FullInstrumentName,0));
+  if (ninst.PropertyExists(char1)) { 
+    ninstchar1 = ninstchar1 + 1;
+    newnames.StaffNum = char1 & Substring(s.FullInstrumentName,1) & ninstchar1;
+  } 
+}
+for each Staff s in Sibelius.ActiveScore {
+  pname = newnames.StaffNum;
+  char1 = CharAt(pname,0);
+  if (ninst.PropertyExists(char1)) { 
+    if (ninstchar1 = 1) {
+      //chop voice no. if only one voice
+      pname = Substring(pname,0,Length(pname)-1);
+    }
+    //trace('new:' & pname);
+    s.FullInstrumentName = pname;
+  }
+}}"
+}

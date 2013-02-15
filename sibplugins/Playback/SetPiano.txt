@@ -1,0 +1,10 @@
+
+{
+	Initialize "(){ AddToPluginsMenu('SetPiano','Run'); }"
+	Run "() {
+for each Staff s in Sibelius.ActiveScore {
+  trace('Vce: ' & s.FullInstrumentName);
+  s.SetSoundId('keyboard.piano.grand.steinway');
+}
+}"
+}
