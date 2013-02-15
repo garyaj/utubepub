@@ -40,12 +40,12 @@ which contains links to the other parts. I put this file in `/usr/local/bin` but
 	* `Getopt::Long`
 	* `autodie`
 	* `Config::Tiny` to read your YouTube credentials file.
-* `ffmpeg` 0.11.2+
-* `sox` 14.4.0+
+* `ffmpeg` 0.11.2 or later. (I used homebrew to install on my Mac.)
+* `sox` 14.4.0 or later. (I used homebrew to install on my Mac.)
 * `youtube-upload` from [here](http://code.google.com/p/youtube-upload)
 
 #### Setting up the tools
-You need to install the `*.plg` plugins in your Sibelius 6 Plugins directory. On my Mac it's at:
+You need to install the `*.plg` plugins in your local Sibelius 6 Plugins directory. On my Mac it's at:
 `~/Library/Application Support/Sibelius Software/Sibelius 6/Plugins`
 
 Drop `sibplugins/Text/DeleteDynamics.plg` into the `Text` directory and `sibplugins/Playback/Set*.plg` files into the `Playback` directory.
