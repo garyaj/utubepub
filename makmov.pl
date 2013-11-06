@@ -73,7 +73,7 @@ for my $i (@Voices) {
 system "ffmpeg -i ${song}.mov -vcodec copy -an ${song}_satb.mp4";
 
 #Extract single frame from movie
-system "ffmpeg -vframes 1 -i ${song}.mov ${song}_single_frame.png";
+system "ffmpeg -i ${song}.mov -vframes 1 ${song}_single_frame.png";
 # :TODO :14/10/2012 11:46:27:GAJ: Extract coords of staves from single frame
 
 # Create an overlay image for each voice
