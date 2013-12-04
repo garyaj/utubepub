@@ -28,7 +28,8 @@ which contains links to the other parts. I put this file in `/usr/local/bin` but
 * `sibplugins/Playback/SetPiano.plg` changes all instruments to Piano. This is simply because Piano seems to give the most clarity of notes for learning.
 * `sibplugins/Text/DeleteDynamics.plg` deletes all the `p`, `pp`, `ff` etc. dynamic marks from a Sibelius file. When one is note-bashing to learn a song, no-one needs soft and loud phrases.
 * `makaud.pl` a cut-down version of `makmov.pl` which only converts the `.aiff` files produced by `SetVoicePan` into normalised `.mp3` files.
-* `uploadmp3.pl` Uploads MP3s to site /audio/practice directory and updates the HTML files which show the links to these files.
+* `uploadmp3.pl` Uploads MP3s to Google Drive /practice directory and updates the HTML files which show the links to these files.
+* `buildgdlist.pl` Initial script to recurse down Google Drive tree of files and return GD ID for each file. Used to build initial directory to MP3s.
  
 #### Pre-requisites
 * Sibelius 6 or later, to run the Sibelius plugins.
