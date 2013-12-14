@@ -10,10 +10,6 @@ use File::Slurp;
 use Mojo::DOM;
 
 my $ssh = Net::OpenSSH->new("ssnfs");
-#Make files and dirs writeable
-# $ssh->system("sudo -u netchant chmod go+w /data/nfs/ss/www/channel/stmaryssingers/docs.stage/data/Component/SB/$_")
-#   for (qw(page site.meta page/directory.dat page/all-titles.dat));
-
 my %Vnames=(
   s => 'Soprano',
   a => 'Alto',
@@ -51,6 +47,12 @@ $prcomposer =~ s/.*/\L$&/;
 (my $prwork = $work) =~ s/[^a-zA-Z]//g;
 $prwork =~ s/.*/\L$&/;
 
+#Make files and dirs writeable
+$ssh->system("sudo -u netchant chmod go+w /data/nfs/ss/www/channel/stmaryssingers/docs.stage/data/Component/SB");
+$ssh->system("sudo -u netchant chmod go+w /data/nfs/ss/www/channel/stmaryssingers/docs.stage/data/Component/SB/$_")
+  for (qw(page site.meta page/directory.dat page/all-titles.dat));
+$ssh->system("sudo -u netchant chmod go+w /data/nfs/ss/www/channel/stmaryssingers/docs.stage/data/Component/SB/page/$prcomposer.dat");
+
 # Upload comp-work.dat for new song/work (can overwrite old)
 my $text = <<EOT;
 <table>
@@ -80,8 +82,11 @@ $text .= <<EOT;
 EOT
 my $dfile = "$prcomposer-$prwork.dat";
 write_file("/tmp/$dfile", $text);
-# $ssh->scp_put("/tmp/$dfile", "/data/nfs/ss/www/channel/stmaryssingers/docs.stage/data/Component/SB/page/")
-  # or die "Can't upload $dfile:".$ssh->error;
+$ssh->scp_put("/tmp/$dfile", "/data/nfs/ss/www/channel/stmaryssingers/docs.stage/data/Component/SB/page/tmp")
+  or die "Can't upload $dfile:".$ssh->error;
+
+$ssh->system("sudo -u netchant cp /data/nfs/ss/www/channel/stmaryssingers/docs.stage/data/Component/SB/page/tmp /data/nfs/ss/www/channel/stmaryssingers/docs.stage/data/Component/SB/page/$dfile");
+$ssh->system("rm /data/nfs/ss/www/channel/stmaryssingers/docs.stage/data/Component/SB/page/tmp");
 
 #Add comp-work page entry to site.meta
 $ssh->scp_get("/data/nfs/ss/www/channel/stmaryssingers/docs.stage/data/Component/SB/site.meta", "/tmp/site.meta")
@@ -111,9 +116,8 @@ $label = "$dwork - $dcomposer";
 my $link = "<br /><a href=\"/$uniqid.html\">$label</a>\n";
 insertlink($link, \@lines, 0, $#lines);
 write_file('/tmp/all-titles.dat', @lines);
-# $ssh->scp_put("/tmp/all-titles.dat", "/data/nfs/ss/www/channel/stmaryssingers/docs.stage/data/Component/SB/page/all-titles.dat")
-#   or die "Can't put all-titles.dat";
-# exit;
+$ssh->scp_put("/tmp/all-titles.dat", "/data/nfs/ss/www/channel/stmaryssingers/docs.stage/data/Component/SB/page/all-titles.dat")
+  or die "Can't put all-titles.dat";
 
 # Download existing composer.dat file and add new link to comp-work
 if ($ssh->scp_get("/data/nfs/ss/www/channel/stmaryssingers/docs.stage/data/Component/SB/page/$prcomposer.dat", "/tmp/$prcomposer.dat")) {
@@ -121,7 +125,7 @@ if ($ssh->scp_get("/data/nfs/ss/www/channel/stmaryssingers/docs.stage/data/Compo
   my $link = "<br /><a href=\"/$uniqid.html\">$dwork</a>\n";
   insertlink($link, \@lines, 0, $#lines);
 } else {
-#Add composer page entry to site.meta
+  #Add composer page entry to site.meta
   $ssh->scp_get("/data/nfs/ss/www/channel/stmaryssingers/docs.stage/data/Component/SB/site.meta", "/tmp/site.meta")
     or die "Can't get site.meta";
   my $label = "$dcomposer";
@@ -144,8 +148,8 @@ EOT
 }
 # Upload composer.dat
 write_file("/tmp/$prcomposer.dat", @lines);
-# $ssh->scp_put("/tmp/$composer.dat", "/data/nfs/ss/www/channel/stmaryssingers/docs.stage/data/Component/SB/page/$composer.dat")
-#   or die "Can't put $composer.dat";
+$ssh->scp_put("/tmp/$prcomposer.dat", "/data/nfs/ss/www/channel/stmaryssingers/docs.stage/data/Component/SB/page/$prcomposer.dat")
+  or die "Can't put $prcomposer.dat";
 
 # Update directory.dat
 $ssh->scp_get("/data/nfs/ss/www/channel/stmaryssingers/docs.stage/data/Component/SB/page/directory.dat", "/tmp/directory.dat")
@@ -183,15 +187,17 @@ $link = "<br /><a href=\"/hymn-$prwork.html\">$dwork</a>\n";
 insertlink($link, \@lines, $starthymn, $endhymn) if ($genre eq 'hymn');
 
 write_file('/tmp/directory.dat', @lines);
-# $ssh->scp_get("/tmp/directory.dat","/data/nfs/ss/www/channel/stmaryssingers/docs.stage/data/Component/SB/page/directory.dat")
-#   or die "Can't put directory.dat";
+$ssh->scp_put("/tmp/directory.dat","/data/nfs/ss/www/channel/stmaryssingers/docs.stage/data/Component/SB/page/directory.dat")
+  or die "Can't put directory.dat";
 
-# $ssh->scp_put("/tmp/site.meta","/data/nfs/ss/www/channel/stmaryssingers/docs.stage/data/Component/SB/site.meta")
-#   or die "Can't put site.meta";
+$ssh->scp_put("/tmp/site.meta","/data/nfs/ss/www/channel/stmaryssingers/docs.stage/data/Component/SB/site.meta")
+  or die "Can't put site.meta";
 
 #Make files and dirs non-writeable
-# $ssh->system("sudo -u netchant chmod go-w /data/nfs/ss/www/channel/stmaryssingers/docs.stage/data/Component/SB/$_")
-#   for (qw(page site.meta page/directory.dat page/all-titles.dat));
+$ssh->system("sudo -u netchant chmod go-w /data/nfs/ss/www/channel/stmaryssingers/docs.stage/data/Component/SB");
+$ssh->system("sudo -u netchant chmod go-w /data/nfs/ss/www/channel/stmaryssingers/docs.stage/data/Component/SB/$_")
+  for (qw(page site.meta page/directory.dat page/all-titles.dat));
+$ssh->system("sudo -u netchant chmod go-w /data/nfs/ss/www/channel/stmaryssingers/docs.stage/data/Component/SB/page/$prcomposer.dat");
 
 sub insertlink {
   #Search @lines for place to insert new title/link
