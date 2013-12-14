@@ -4,17 +4,15 @@
 use 5.010;
 use autodie;
 use Getopt::Long;
-use Config::Tiny;
-use Net::FTP;
+use Net::OpenSSH;
 use Cwd;
 use File::Slurp;
 use Mojo::DOM;
 
-my $Config = Config::Tiny->new;
-$Config = Config::Tiny->read( "$ENV{HOME}/.stms/cred.conf" ) or die "Can't open cred.conf";
-my $Host     = $Config->{_}->{Host};
-my $Login    = $Config->{_}->{Login};
-my $Password = $Config->{_}->{Password};
+my $ssh = Net::OpenSSH->new("ssnfs");
+#Make files and dirs writeable
+# $ssh->system("sudo -u netchant chmod go+w /data/nfs/ss/www/channel/stmaryssingers/docs.stage/data/Component/SB/$_")
+#   for (qw(page site.meta page/directory.dat page/all-titles.dat));
 
 my %Vnames=(
   s => 'Soprano',
@@ -34,17 +32,18 @@ my %Vnames=(
 my %voc   = ( 's' => 0, 'a' => 1, 't' => 2, 'b' => 3, 'satb' => 4 );
 
 # Get display names
-my ($dcomposer, $dwork);
+my ($dcomposer, $dwork, $genre);
 GetOptions(
   'composer=s' => \$dcomposer,
   'work=s' => \$dwork,
+  'genre=s' => \$genre,
 );
-die "Usage: $0 --work work --composer composer"
+die "Usage: $0 --work work --composer composer --genre [mass|oratorio|motet|carol|hymn]"
   unless $dcomposer and $dwork;
 
 #Generate lowercase equivalents of composer and work, taken from current
 #directory
-# ~gary/Music/sibs/sib/Saint-Saens/Oratorio_de_Noel
+# ~gary/Music/sibs/sib/Durufle/UbiCaritas
 my $cwd = cwd();
 my ($composer, $work) = (split /\//, $cwd)[-2,-1];   #2nd last is Composer, last is Work
 (my $prcomposer = $composer) =~ s/[^a-zA-Z]//g;
@@ -52,120 +51,157 @@ $prcomposer =~ s/.*/\L$&/;
 (my $prwork = $work) =~ s/[^a-zA-Z]//g;
 $prwork =~ s/.*/\L$&/;
 
-# establish FTP connection to NetRegistry host
-my $ftp = Net::FTP->new($Host, Debug => 0)
- or die "Cannot connect to $Host: $@";
-
-$ftp->login($Login,$Password)
- or die "Cannot login ", $ftp->message;
-
-# move to /audio/practice/$prcomposer/$prwork (create it, if it doesn't exist)
-if (!$ftp->cwd("/audio/practice/$prcomposer/$prwork")) {
-  $ftp->mkdir("/audio/practice/$prcomposer/$prwork",1);
-  $ftp->cwd("/audio/practice/$prcomposer/$prwork")
-   or die "Cannot change working directory ", $ftp->message;
+# Upload comp-work.dat for new song/work (can overwrite old)
+my $text = <<EOT;
+<table>
+<tbody>
+<tr>
+<td>$dwork</td>
+EOT
+# Read YouTube IDs from Work_ytid.txt file
+open(my $ytfh, "<", "${work}_ytid.txt") or die "Can't open ${work}_ytid file";
+# Read GoogleDrive IDs from Work_gdid.txt file
+open(my $gdfh, "<", "${work}_gdid.txt") or die "Can't open ${work}_gdid file";
+while (my $line = <$ytfh>) {
+  my $gdline = <$gdfh>;
+  my($voice, $ytid) = split /\s+/, $line;
+  my(undef, $gdid) = split /\s+/, $gdline;
+  $text .= "<td><a href='http://youtu.be/$ytid?hd=1'><img style='padding:0 5px 0 20px;' ".
+  "src='/images/icon_youtube_16x16.gif' alt='Click to view on YouTube' /></a>".
+  "<a href=\"http://drive.google.com/uc?export=view&amp;id=$gdid\">$Vnames{$voice}</a>".
+  "</td>";
 }
+close $ytfh;
+close $gdfh;
+$text .= <<EOT;
+</tr>
+</tbody>
+</table>
+EOT
+my $dfile = "$prcomposer-$prwork.dat";
+write_file("/tmp/$dfile", $text);
+# $ssh->scp_put("/tmp/$dfile", "/data/nfs/ss/www/channel/stmaryssingers/docs.stage/data/Component/SB/page/")
+  # or die "Can't upload $dfile:".$ssh->error;
 
-#Split list of MP3s and sort into name/SATB order
-my @files = sort {
-              $a->[1] cmp $b->[1]
-                      ||
-              $voc{$a->[2]} <=> $voc{$b->[2]}
-                 }
-            map { [$_, /^(.+)_[satb]+\d?\.mp3/, /_([satb]+)\d?\.mp3/ ] }
-            glob("*.mp3");
+#Add comp-work page entry to site.meta
+$ssh->scp_get("/data/nfs/ss/www/channel/stmaryssingers/docs.stage/data/Component/SB/site.meta", "/tmp/site.meta")
+  or die "Can't get site.meta";
 
-#Upload the MP3s
-for my $file (@files) {
-  $ftp->put($file->[0]);
-}
+my $label = "$dcomposer - $dwork";
+my $uniqid = "$prcomposer-$prwork";
+open(my $mt, ">>", "/tmp/site.meta") or die "Can't open /tmp/site.meta";
+print $mt <<EOT;
 
-# Now move to /audio/directory/$composer
-if (!$ftp->cwd("/audio/directory/$composer")) {
-  # (create it, if it doesn't exist)
-  $ftp->mkdir("/audio/directory/$composer");
-  # TODO add new composer to index.html
-  $ftp->cwd("/audio/directory/$composer")
-   or die "Cannot change working directory ", $ftp->message;
-}
+[$uniqid]
+label=$label
+lastpublished=
+lastupdated=1386245606
+layout=work
+title=$uniqid
+type=page
+url=/$uniqid.html
+EOT
+close $mt;
 
-#Check if composer is already in list, else add him(her).
-#If new composer, add index file listing this work.
-#If existing composer and add new work to existing index and create the new work
-#directory entry
-$ftp->get('/templates/work_tmpl.html','/tmp/work_tmpl.html')
-  or die "Can't get work_tmpl.html";
-my $text = read_file( '/tmp/work_tmpl.html' ) ;
-my $dom = Mojo::DOM->new();
-$dom = $dom->parse($text);
-$dom->at('title')->append_content("$dcomposer - $dwork")->root;
-$dom->at('div.reason h1')->replace_content("$dcomposer - $dwork")->root;
-$dom->at('div.column_2 span')->replace("<table>\n<tr>\n<td></td>\n</tr>\n</table>\n")->root;
-# $dom->parse("<table>\n<tr>\n<td></td>\n</tr>\n</table>\n")->root;
-
-my $prevsong = '';
-# @Songs is used to determine whether to create one or multiple entries in
-# /audio/directory/Composer
-my @Songs;
-
-for my $file (@files) {
-  my $song = $file->[1];
-  if ($song ne $prevsong) {
-    push @Songs, $song;
-    if (!$prevsong) { #first time insert song name into dummy td element
-      $dom->at('td')->replace_content($song)->root;
-    } else {
-      #otherwise append a new row with song name
-      $dom->find('tr')->[-1]->append("<tr>\n<td>$song</td>\n</tr>\n")->root;
-    }
-    # Read YouTube IDs from Song_ytid.txt file
-    open(my $ytfh, "<", "${song}_ytid.txt")
-      or die "Can't open ${song}_ytid file";
-    while (my $line = <$ytfh>) {
-      my($voice, $ytid) = split /\s+/, $line;
-      my $html = "<td><a href='http://youtu.be/$ytid?hd=1'><img style='padding:0 5px 0 20px;' ".
-      "src='/images/icon_youtube_16x16.gif' alt='Click to view on YouTube' /></a>".
-      "<a href='/audio/practice/$prcomposer/$prwork/${song}_$voice.mp3'>$Vnames{$voice}</a>".
-      "</td>";
-      $dom->find('td')->[-1]->append($html)->root;
-    }
-    close $ytfh;
-  }
-  $prevsong = $song;
-}
-# say $dom;
+# Update all-titles.dat
+$ssh->scp_get("/data/nfs/ss/www/channel/stmaryssingers/docs.stage/data/Component/SB/page/all-titles.dat", "/tmp/all-titles.dat")
+  or die "Can't get all-titles.dat";
+my @lines = read_file( '/tmp/all-titles.dat' ) ;
+my $link = "<br /><a href=\"/$uniqid.html\">$label</a>\n";
+insertlink($link, \@lines, 0, $#lines);
+write_file('/tmp/all-titles.dat', @lines);
+# $ssh->scp_put("/tmp/all-titles.dat", "/data/nfs/ss/www/channel/stmaryssingers/docs.stage/data/Component/SB/page/all-titles.dat")
+#   or die "Can't put all-titles.dat";
 # exit;
-write_file("/tmp/$work.html", $dom);
 
-# get a list of existing files in remote directory
-my @rfiles = $ftp->ls();
-
-# upload $song.html
-$ftp->put("/tmp/$work.html");
-
-if (scalar @rfiles == 0) {
-  # if there were no other files in the directory
-  # create an index.html pointing to $work.html
-  $ftp->get('/templates/index_tmpl.html','/tmp/index_tmpl.html')
-    or die "Can't get index_tmpl.html";
-  $text = read_file( '/tmp/index_tmpl.html' ) ;
-  $dom = Mojo::DOM->new();
-  $dom = $dom->parse($text);
-  $dom->at('title')->append_content("$dcomposer")->root;
-  $dom->at('div.reason h1')->replace_content("$dcomposer")->root;
-  $dom->at('div.column_2 span')->replace("<a href=\"$work.html\">$dwork</a>\n")->root;
-  write_file("/tmp/index.html", $dom);
-  $ftp->put("/tmp/index.html");
+# Download existing composer.dat file and add new link to comp-work
+if ($ssh->scp_get("/data/nfs/ss/www/channel/stmaryssingers/docs.stage/data/Component/SB/page/$composer.dat", "/tmp/$composer.dat")) {
+  @lines = read_file( "/tmp/$composer.dat" ) ;
+  my $link = "<br /><a href=\"/$uniqid.html\">$dwork</a>\n";
+  insertlink($link, \@lines, 0, $#lines);
 } else {
-  # add new link to index.html
-  $ftp->get('index.html','/tmp/index_temp.html')
-    or die "Can't get index.html";
-  $text = read_file( '/tmp/index_temp.html' ) ;
-  $dom = Mojo::DOM->new();
-  $dom = $dom->parse($text);
-  $dom->find('div.column_2 a')->[-1]->append("<br />\n<a href=\"$work.html\">$dwork</a>")->root;
-  write_file("/tmp/index.html", $dom);
-  $ftp->put("/tmp/index.html");
+#Add composer page entry to site.meta
+  $ssh->scp_get("/data/nfs/ss/www/channel/stmaryssingers/docs.stage/data/Component/SB/site.meta", "/tmp/site.meta")
+    or die "Can't get site.meta";
+  my $label = "$dcomposer";
+  my $uniqid = "$prcomposer";
+  open(my $mt, ">>", "/tmp/site.meta") or die "Can't open /tmp/site.meta";
+  print $mt <<EOT;
+
+[$uniqid]
+label=$label
+lastpublished=
+lastupdated=1386245606
+layout=work
+title=$uniqid
+type=page
+url=/$uniqid.html
+EOT
+  close $mt;
+
+  @lines = ("<p align=\"left\">\n", "<a href=\"/$uniqid\">$dwork</a>\n", "</p>\n");
 }
-$ftp->quit;
+# Upload composer.dat
+write_file("/tmp/$composer.dat", @lines);
+# $ssh->scp_put("/tmp/$composer.dat", "/data/nfs/ss/www/channel/stmaryssingers/docs.stage/data/Component/SB/page/$composer.dat")
+#   or die "Can't put $composer.dat";
+
+# Update directory.dat
+$ssh->scp_get("/data/nfs/ss/www/channel/stmaryssingers/docs.stage/data/Component/SB/page/directory.dat", "/tmp/directory.dat")
+  or die "Can't get directory.dat";
+@lines = read_file( '/tmp/directory.dat' ) ;
+$link = "<br /><a href=\"/$composer.html\">$dcomposer</a>\n";
+my ($startcomp, $endcomp, $startmass, $endmass, $startorat, $endorat, $startmotet, $endmotet, $startcarol, $endcarol, $starthymn, $endhymn);
+my $foundcomposer = 0;
+for (my $i=0 ; $i < $#lines; $i++) {
+  $foundcomposer = 1 if ($lines[$i] =~ />$dcomposer</);
+  $startcomp =  $i+2 if ($lines[$i] =~ /<h3>Composers/); 
+  $endcomp =    $i if ($startcomp and $lines[$i] =~ /<\/p>/); 
+  $startmass =  $i+2 if ($lines[$i] =~ /<h3>Masses/); 
+  $endmass =    $i if ($startmass and $lines[$i] =~ /<\/p>/); 
+  $startorat =  $i+2 if ($lines[$i] =~ /<h3>Oratorios/); 
+  $endorat =    $i if ($startorat and $lines[$i] =~ /<\/p>/); 
+  $startmotet = $i+2 if ($lines[$i] =~ /<h3>Motets/); 
+  $endmotet =   $i if ($startmotet and $lines[$i] =~ /<\/p>/); 
+  $startcarol = $i+2 if ($lines[$i] =~ /<h3>Carols/); 
+  $endcarol =   $i if ($startcarol and $lines[$i] =~ /<\/p>/); 
+  $starthymn =  $i+2 if ($lines[$i] =~ /<h3>Hymns/); 
+  $endhymn =    $i if ($starthymn and $lines[$i] =~ /<\/p>/); 
+}
+# Insert composer link if not present
+# Insert link to song in appropriate category/genre
+insertlink($link, \@lines, $startcomp, $endcomp) unless $foundcomposer;
+insertlink($link, \@lines, $startmass, $endmass) if ($genre eq 'mass');
+insertlink($link, \@lines, $startorat, $endorat) if ($genre eq 'oratorio');
+insertlink($link, \@lines, $startmotet, $endmotet) if ($genre eq 'motet');
+insertlink($link, \@lines, $startcarol, $endcarol) if ($genre eq 'carol');
+insertlink($link, \@lines, $starthymn, $endhymn) if ($genre eq 'hymn');
+write_file('/tmp/directory.dat', @lines);
+# $ssh->scp_get("/tmp/directory.dat","/data/nfs/ss/www/channel/stmaryssingers/docs.stage/data/Component/SB/page/directory.dat")
+#   or die "Can't put directory.dat";
+
+# $ssh->scp_put("/tmp/site.meta","/data/nfs/ss/www/channel/stmaryssingers/docs.stage/data/Component/SB/site.meta")
+#   or die "Can't put site.meta";
+
+#Make files and dirs non-writeable
+# $ssh->system("sudo -u netchant chmod go-w /data/nfs/ss/www/channel/stmaryssingers/docs.stage/data/Component/SB/$_")
+#   for (qw(page site.meta page/directory.dat page/all-titles.dat));
+
+sub insertlink {
+  #Search @lines for place to insert new title/link
+  my ($link, $lines, $i, $j) = @_;
+  my $found = 0;
+  while ($i <= $j) {
+    my ($title) = ($lines->[$i] =~ m%<a href="/.*\.html">([^<]+)</a>%);
+    if ($title ge $label) {
+      splice(@{$lines},$i,0,$link); #insert link
+      $found = 1;
+      last;
+    }
+    $i++;
+  }
+  if (not $found) {
+    splice(@{$lines},$i,0,$link);  #Add link to end of list
+  }
+}
 # vi:ai:et:sw=2 ts=2
