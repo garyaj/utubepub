@@ -69,7 +69,7 @@ while (my $line = <$ytfh>) {
   $text .= "<td><a href='http://youtu.be/$ytid?hd=1'><img style='padding:0 5px 0 20px;' ".
   "src='/images/icon_youtube_16x16.gif' alt='Click to view on YouTube' /></a>".
   "<a href=\"http://drive.google.com/uc?export=view&amp;id=$gdid\">$Vnames{$voice}</a>".
-  "</td>";
+  "</td>\n";
 }
 close $ytfh;
 close $gdfh;
@@ -107,6 +107,7 @@ close $mt;
 $ssh->scp_get("/data/nfs/ss/www/channel/stmaryssingers/docs.stage/data/Component/SB/page/all-titles.dat", "/tmp/all-titles.dat")
   or die "Can't get all-titles.dat";
 my @lines = read_file( '/tmp/all-titles.dat' ) ;
+$label = "$dwork - $dcomposer";
 my $link = "<br /><a href=\"/$uniqid.html\">$label</a>\n";
 insertlink($link, \@lines, 0, $#lines);
 write_file('/tmp/all-titles.dat', @lines);
@@ -115,8 +116,8 @@ write_file('/tmp/all-titles.dat', @lines);
 # exit;
 
 # Download existing composer.dat file and add new link to comp-work
-if ($ssh->scp_get("/data/nfs/ss/www/channel/stmaryssingers/docs.stage/data/Component/SB/page/$composer.dat", "/tmp/$composer.dat")) {
-  @lines = read_file( "/tmp/$composer.dat" ) ;
+if ($ssh->scp_get("/data/nfs/ss/www/channel/stmaryssingers/docs.stage/data/Component/SB/page/$prcomposer.dat", "/tmp/$prcomposer.dat")) {
+  @lines = read_file( "/tmp/$prcomposer.dat" ) ;
   my $link = "<br /><a href=\"/$uniqid.html\">$dwork</a>\n";
   insertlink($link, \@lines, 0, $#lines);
 } else {
@@ -142,7 +143,7 @@ EOT
   @lines = ("<p align=\"left\">\n", "<a href=\"/$uniqid\">$dwork</a>\n", "</p>\n");
 }
 # Upload composer.dat
-write_file("/tmp/$composer.dat", @lines);
+write_file("/tmp/$prcomposer.dat", @lines);
 # $ssh->scp_put("/tmp/$composer.dat", "/data/nfs/ss/www/channel/stmaryssingers/docs.stage/data/Component/SB/page/$composer.dat")
 #   or die "Can't put $composer.dat";
 
@@ -150,11 +151,11 @@ write_file("/tmp/$composer.dat", @lines);
 $ssh->scp_get("/data/nfs/ss/www/channel/stmaryssingers/docs.stage/data/Component/SB/page/directory.dat", "/tmp/directory.dat")
   or die "Can't get directory.dat";
 @lines = read_file( '/tmp/directory.dat' ) ;
-$link = "<br /><a href=\"/$composer.html\">$dcomposer</a>\n";
+$link = "<br /><a href=\"/$prcomposer.html\">$dcomposer</a>\n";
 my ($startcomp, $endcomp, $startmass, $endmass, $startorat, $endorat, $startmotet, $endmotet, $startcarol, $endcarol, $starthymn, $endhymn);
 my $foundcomposer = 0;
 for (my $i=0 ; $i < $#lines; $i++) {
-  $foundcomposer = 1 if ($lines[$i] =~ />$dcomposer</);
+  $foundcomposer = 1 if ($lines[$i] =~ /$prcomposer/i);
   $startcomp =  $i+2 if ($lines[$i] =~ /<h3>Composers/); 
   $endcomp =    $i if ($startcomp and $lines[$i] =~ /<\/p>/); 
   $startmass =  $i+2 if ($lines[$i] =~ /<h3>Masses/); 
@@ -169,13 +170,18 @@ for (my $i=0 ; $i < $#lines; $i++) {
   $endhymn =    $i if ($starthymn and $lines[$i] =~ /<\/p>/); 
 }
 # Insert composer link if not present
-# Insert link to song in appropriate category/genre
 insertlink($link, \@lines, $startcomp, $endcomp) unless $foundcomposer;
+
+# Insert link to song in appropriate category/genre
+$link = "<br /><a href=\"/$prcomposer-$prwork.html\">$dwork - $dcomposer</a>\n";
 insertlink($link, \@lines, $startmass, $endmass) if ($genre eq 'mass');
 insertlink($link, \@lines, $startorat, $endorat) if ($genre eq 'oratorio');
 insertlink($link, \@lines, $startmotet, $endmotet) if ($genre eq 'motet');
+$link = "<br /><a href=\"/carol-$prwork.html\">$dwork</a>\n";
 insertlink($link, \@lines, $startcarol, $endcarol) if ($genre eq 'carol');
+$link = "<br /><a href=\"/hymn-$prwork.html\">$dwork</a>\n";
 insertlink($link, \@lines, $starthymn, $endhymn) if ($genre eq 'hymn');
+
 write_file('/tmp/directory.dat', @lines);
 # $ssh->scp_get("/tmp/directory.dat","/data/nfs/ss/www/channel/stmaryssingers/docs.stage/data/Component/SB/page/directory.dat")
 #   or die "Can't put directory.dat";
@@ -201,7 +207,7 @@ sub insertlink {
     $i++;
   }
   if (not $found) {
-    splice(@{$lines},$i,0,$link);  #Add link to end of list
+    splice(@{$lines},$i-1,0,$link);  #Add link to end of list
   }
 }
 # vi:ai:et:sw=2 ts=2
