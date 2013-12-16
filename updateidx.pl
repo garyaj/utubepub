@@ -51,9 +51,10 @@ $prwork =~ s/.*/\L$&/;
 $ssh->system("sudo -u netchant chmod go+w /data/nfs/ss/www/channel/stmaryssingers/docs.stage/data/Component/SB");
 $ssh->system("sudo -u netchant chmod go+w /data/nfs/ss/www/channel/stmaryssingers/docs.stage/data/Component/SB/$_")
   for (qw(page site.meta page/directory.dat page/all-titles.dat));
-$ssh->system("sudo -u netchant chmod go+w /data/nfs/ss/www/channel/stmaryssingers/docs.stage/data/Component/SB/page/$prcomposer.dat");
-
-# Upload comp-work.dat for new song/work (can overwrite old)
+if ($genre =~ /mass|oratorio|motet/) {
+  $ssh->system("sudo -u netchant chmod go+w /data/nfs/ss/www/channel/stmaryssingers/docs.stage/data/Component/SB/page/$prcomposer.dat");
+}
+# Upload comp-work.dat for new song/work (can overwrite old if it exists)
 my $text = <<EOT;
 <table>
 <tbody>
@@ -108,30 +109,32 @@ url=/$uniqid.html
 EOT
 close $mt;
 
-# Update all-titles.dat
+# Insert new title into all-titles.dat
 $ssh->scp_get("/data/nfs/ss/www/channel/stmaryssingers/docs.stage/data/Component/SB/page/all-titles.dat", "/tmp/all-titles.dat")
   or die "Can't get all-titles.dat";
-my @lines = read_file( '/tmp/all-titles.dat' ) ;
-$label = "$dwork - $dcomposer";
-my $link = "<br /><a href=\"/$uniqid.html\">$label</a>\n";
-insertlink($link, \@lines, 0, $#lines);
-write_file('/tmp/all-titles.dat', @lines);
+if ($genre =~ /mass|oratorio|motet/) {
+  $label = "$dwork - $dcomposer";
+} else {
+  $label = $dwork;
+}
+my $link = "<a href=\"/$uniqid.html\">$label</a>";
+insertlink ('/tmp/all-titles.dat', $link, $label, 'all', 'a');
 $ssh->scp_put("/tmp/all-titles.dat", "/data/nfs/ss/www/channel/stmaryssingers/docs.stage/data/Component/SB/page/all-titles.dat")
   or die "Can't put all-titles.dat";
 
-# Download existing composer.dat file and add new link to comp-work
-if ($ssh->scp_get("/data/nfs/ss/www/channel/stmaryssingers/docs.stage/data/Component/SB/page/$prcomposer.dat", "/tmp/$prcomposer.dat")) {
-  @lines = read_file( "/tmp/$prcomposer.dat" ) ;
-  my $link = "<br /><a href=\"/$uniqid.html\">$dwork</a>\n";
-  insertlink($link, \@lines, 0, $#lines);
-} else {
-  #Add composer page entry to site.meta
-  $ssh->scp_get("/data/nfs/ss/www/channel/stmaryssingers/docs.stage/data/Component/SB/site.meta", "/tmp/site.meta")
-    or die "Can't get site.meta";
-  my $label = "$dcomposer";
-  my $uniqid = "$prcomposer";
-  open(my $mt, ">>", "/tmp/site.meta") or die "Can't open /tmp/site.meta";
-  print $mt <<EOT;
+if ($genre =~ /mass|oratorio|motet/) {
+  # Download existing composer.dat file and add new link to comp-work
+  if ($ssh->scp_get("/data/nfs/ss/www/channel/stmaryssingers/docs.stage/data/Component/SB/page/$prcomposer.dat", "/tmp/$prcomposer.dat")) {
+    $link = "<a href=\"/$uniqid.html\">$dwork</a>";
+    insertlink ("/tmp/$prcomposer.dat", $link, $dwork, 'work', 'a');
+  } else {
+    #Add composer page entry to site.meta
+    $ssh->scp_get("/data/nfs/ss/www/channel/stmaryssingers/docs.stage/data/Component/SB/site.meta", "/tmp/site.meta")
+      or die "Can't get site.meta";
+    my $label = "$dcomposer";
+    my $uniqid = "$prcomposer";
+    open(my $mt, ">>", "/tmp/site.meta") or die "Can't open /tmp/site.meta";
+    print $mt <<EOT;
 
 [$uniqid]
 label=$label
@@ -142,51 +145,33 @@ title=$uniqid
 type=page
 url=/$uniqid.html
 EOT
-  close $mt;
+    close $mt;
 
-  @lines = ("<p align=\"left\">\n", "<a href=\"/$uniqid\">$dwork</a>\n", "</p>\n");
-}
+    my $text = "<p align=\"left\">\n<a href=\"/$uniqid\">$dwork</a>\n</p>\n";
+    write_file("/tmp/$prcomposer.dat", $text);
+  }
+
 # Upload composer.dat
-write_file("/tmp/$prcomposer.dat", @lines);
 $ssh->scp_put("/tmp/$prcomposer.dat", "/data/nfs/ss/www/channel/stmaryssingers/docs.stage/data/Component/SB/page/$prcomposer.dat")
   or die "Can't put $prcomposer.dat";
+}
 
 # Update directory.dat
 $ssh->scp_get("/data/nfs/ss/www/channel/stmaryssingers/docs.stage/data/Component/SB/page/directory.dat", "/tmp/directory.dat")
   or die "Can't get directory.dat";
-@lines = read_file( '/tmp/directory.dat' ) ;
-$link = "<br /><a href=\"/$prcomposer.html\">$dcomposer</a>\n";
-my ($startcomp, $endcomp, $startmass, $endmass, $startorat, $endorat, $startmotet, $endmotet, $startcarol, $endcarol, $starthymn, $endhymn);
-my $foundcomposer = 0;
-for (my $i=0 ; $i < $#lines; $i++) {
-  $foundcomposer = 1 if ($lines[$i] =~ /$prcomposer/i);
-  $startcomp =  $i+2 if ($lines[$i] =~ /<h3>Composers/); 
-  $endcomp =    $i if ($startcomp and $lines[$i] =~ /<\/p>/); 
-  $startmass =  $i+2 if ($lines[$i] =~ /<h3>Masses/); 
-  $endmass =    $i if ($startmass and $lines[$i] =~ /<\/p>/); 
-  $startorat =  $i+2 if ($lines[$i] =~ /<h3>Oratorios/); 
-  $endorat =    $i if ($startorat and $lines[$i] =~ /<\/p>/); 
-  $startmotet = $i+2 if ($lines[$i] =~ /<h3>Motets/); 
-  $endmotet =   $i if ($startmotet and $lines[$i] =~ /<\/p>/); 
-  $startcarol = $i+2 if ($lines[$i] =~ /<h3>Carols/); 
-  $endcarol =   $i if ($startcarol and $lines[$i] =~ /<\/p>/); 
-  $starthymn =  $i+2 if ($lines[$i] =~ /<h3>Hymns/); 
-  $endhymn =    $i if ($starthymn and $lines[$i] =~ /<\/p>/); 
-}
-# Insert composer link if not present
-insertlink($link, \@lines, $startcomp, $endcomp) unless $foundcomposer;
-
 # Insert link to song in appropriate category/genre
-$link = "<br /><a href=\"/$prcomposer-$prwork.html\">$dwork - $dcomposer</a>\n";
-insertlink($link, \@lines, $startmass, $endmass) if ($genre eq 'mass');
-insertlink($link, \@lines, $startorat, $endorat) if ($genre eq 'oratorio');
-insertlink($link, \@lines, $startmotet, $endmotet) if ($genre eq 'motet');
-$link = "<br /><a href=\"/carol-$prwork.html\">$dwork</a>\n";
-insertlink($link, \@lines, $startcarol, $endcarol) if ($genre eq 'carol');
-$link = "<br /><a href=\"/hymn-$prwork.html\">$dwork</a>\n";
-insertlink($link, \@lines, $starthymn, $endhymn) if ($genre eq 'hymn');
+if ($genre =~ /mass|oratorio|motet/) {
+  #Insert composer if mass, oratorio or motet
+  $link = "<a href=\"/$prcomposer.html\">$dcomposer</a>\n";
+  insertlink ('/tmp/directory.dat', $link, $dcomposer, 'composer', "h3#composer ~ p > a");
+  $link = "<a href=\"/$prcomposer-$prwork.html\">$dwork - $dcomposer</a>";
+  $label = "$dwork - $dcomposer";
+} else {
+  $link = "<a href=\"/$genre-$prwork.html\">$dwork</a>";
+  $label = $dwork;
+}
+insertlink ('/tmp/directory.dat', $link, $label, $genre, "h3#$genre ~ p > a");
 
-write_file('/tmp/directory.dat', @lines);
 $ssh->scp_put("/tmp/directory.dat","/data/nfs/ss/www/channel/stmaryssingers/docs.stage/data/Component/SB/page/directory.dat")
   or die "Can't put directory.dat";
 
@@ -197,23 +182,32 @@ $ssh->scp_put("/tmp/site.meta","/data/nfs/ss/www/channel/stmaryssingers/docs.sta
 $ssh->system("sudo -u netchant chmod go-w /data/nfs/ss/www/channel/stmaryssingers/docs.stage/data/Component/SB");
 $ssh->system("sudo -u netchant chmod go-w /data/nfs/ss/www/channel/stmaryssingers/docs.stage/data/Component/SB/$_")
   for (qw(page site.meta page/directory.dat page/all-titles.dat));
-$ssh->system("sudo -u netchant chmod go-w /data/nfs/ss/www/channel/stmaryssingers/docs.stage/data/Component/SB/page/$prcomposer.dat");
-
+if ($genre =~ /mass|oratorio|motet/) {
+  $ssh->system("sudo -u netchant chmod go-w /data/nfs/ss/www/channel/stmaryssingers/docs.stage/data/Component/SB/page/$prcomposer.dat");
+}
 sub insertlink {
   #Search @lines for place to insert new title/link
-  my ($link, $lines, $i, $j) = @_;
+  my ($file, $link, $label, $genre, $css) = @_;
+  my $text = read_file( $file );
+  my $dom = Mojo::DOM->new();
+  my $llb = lc($label);
+  $dom = $dom->parse($text);
   my $found = 0;
-  while ($i <= $j) {
-    my ($title) = ($lines->[$i] =~ m%<a href="/.*\.html">([^<]+)</a>%);
-    if ($title ge $label) {
-      splice(@{$lines},$i,0,$link); #insert link
+  for my $e ($dom->find($css)->each) {
+    my $test = lc(($genre eq 'composer') ? $e->attr('href') : $e->text);
+    if ($test eq $llb) {
+      $found = 1;
+      last;
+    } elsif ($test gt $llb) {
+      $e->prepend("$link\n<br />");
       $found = 1;
       last;
     }
-    $i++;
   }
   if (not $found) {
-    splice(@{$lines},$i-1,0,$link);  #Add link to end of list
+    my $last = $css.':last-child';
+    $dom->at($last)->append("\n<br />$link");  #Add link to end of list
   }
+  write_file($file, $dom);
 }
 # vi:ai:et:sw=2 ts=2
