@@ -64,7 +64,7 @@ package main;
 
 Log::Log4perl->easy_init($DEBUG);
 my $ftbl = GDFileLookup->new();
-$ftbl->printfiles('/practice');
+$ftbl->printfiles('/performance');
 
 # vi:ai:et:sw=2 ts=2
 

@@ -119,10 +119,8 @@ if ($genre =~ /mass|oratorio|motet/) {
 }
 my $link = "<a href=\"/$uniqid.html\">$label</a>";
 insertlink ('/tmp/all-titles.dat', $link, $label, 'all', 'a');
-$ssh->scp_put("/tmp/all-titles.dat", "/data/nfs/ss/www/channel/stmaryssingers/docs.stage/data/Component/SB/page/tmp")
+$ssh->scp_put("/tmp/all-titles.dat", "/data/nfs/ss/www/channel/stmaryssingers/docs.stage/data/Component/SB/page/all-titles.dat")
   or die "Can't put all-titles.dat";
-$ssh->system("sudo -u netchant tidy /data/nfs/ss/www/channel/stmaryssingers/docs.stage/data/Component/SB/page/tmp > /data/nfs/ss/www/channel/stmaryssingers/docs.stage/data/Component/SB/page/all-titles.dat");
-$ssh->system("rm /data/nfs/ss/www/channel/stmaryssingers/docs.stage/data/Component/SB/page/tmp");
 
 if ($genre =~ /mass|oratorio|motet/) {
   # Download existing composer.dat file and add new link to comp-work
@@ -174,10 +172,8 @@ if ($genre =~ /mass|oratorio|motet/) {
 }
 insertlink ('/tmp/directory.dat', $link, $label, $genre, "h3#$genre ~ p > a");
 
-$ssh->scp_put("/tmp/directory.dat","/data/nfs/ss/www/channel/stmaryssingers/docs.stage/data/Component/SB/page/tmp")
+$ssh->scp_put("/tmp/directory.dat","/data/nfs/ss/www/channel/stmaryssingers/docs.stage/data/Component/SB/page/directory.dat")
   or die "Can't put directory.dat";
-$ssh->system("sudo -u netchant tidy /data/nfs/ss/www/channel/stmaryssingers/docs.stage/data/Component/SB/page/tmp > /data/nfs/ss/www/channel/stmaryssingers/docs.stage/data/Component/SB/page/directory.dat");
-$ssh->system("rm /data/nfs/ss/www/channel/stmaryssingers/docs.stage/data/Component/SB/page/tmp");
 
 $ssh->scp_put("/tmp/site.meta","/data/nfs/ss/www/channel/stmaryssingers/docs.stage/data/Component/SB/site.meta")
   or die "Can't put site.meta";
@@ -193,6 +189,7 @@ sub insertlink {
   #Search @lines for place to insert new title/link
   my ($file, $link, $label, $genre, $css) = @_;
   my $text = read_file( $file );
+  utf8::decode($text);
   my $dom = Mojo::DOM->new();
   my $llb = lc($label);
   $dom = $dom->parse($text);
@@ -212,6 +209,7 @@ sub insertlink {
     my $last = $css.':last-child';
     $dom->at($last)->append("\n<br />$link");  #Add link to end of list
   }
+  utf8::encode($dom);
   write_file($file, $dom);
 }
 # vi:ai:et:sw=2 ts=2
